@@ -1,29 +1,38 @@
-import os
+import sqlite3
 import zipfile
+import os
 
-# Only per-language DB files (no bible.db)
-db_files = [
-    "bible_en.db",
-    "bible_hi.db",
-    "bible_kn.db",
-    "bible_ml.db",
-    "bible_ta.db",
-    "bible_te.db"
+# List of zipped DB files
+zip_files = [
+    "bible_en.zip",
+    "bible_hi.zip",
+    "bible_kn.zip",
+    "bible_ml.zip",
+    "bible_ta.zip",
+    "bible_te.zip"
 ]
 
-def get_size(path):
-    """Return human readable size"""
-    size = os.path.getsize(path)
-    return f"{size/1024/1024:.2f} MB"
+for zip_file in zip_files:
+    try:
+        with zipfile.ZipFile(zip_file, 'r') as z:
+            # Find the .db file inside the zip
+            db_name = [name for name in z.namelist() if name.endswith('.db')][0]
+            print(f"📦 {zip_file} contains DB: {db_name}")
 
-for db in db_files:
-    if os.path.exists(db):
-        zip_name = db.replace(".db", ".zip")
-        
-        # Create zip archive
-        with zipfile.ZipFile(zip_name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(db, arcname=os.path.basename(db))
-        
-        print(f"📖 {db}: {get_size(db)} → {zip_name}: {get_size(zip_name)}")
-    else:
-        print(f"❌ {db} not found")
+            # Extract the DB temporarily
+            temp_path = os.path.join(".", db_name)
+            z.extract(db_name, ".")
+
+            # Connect to the extracted DB
+            conn = sqlite3.connect(temp_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [t[0] for t in cursor.fetchall()]
+            print(f"   🗂 Tables: {tables}")
+            conn.close()
+
+            # Remove the temporary DB file
+            os.remove(temp_path)
+
+    except Exception as e:
+        print(f"❌ Error with {zip_file}: {e}")
