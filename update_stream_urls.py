@@ -1,12 +1,12 @@
 import os
 import json
-import requests
 import subprocess
 
 # -----------------------------
-# JSON folder path
+# Paths
 # -----------------------------
-json_folder = r"C:\Users\VIJAY SNEHAL\Desktop\giturlmapping\bible_scripture\stream_urls"
+base_folder = r"C:\Users\VIJAY SNEHAL\Desktop\giturlmapping\bible_scripture"
+json_folder = os.path.join(base_folder, "stream_urls")
 
 # -----------------------------
 # Language to GitHub repo/folder mapping
@@ -23,63 +23,47 @@ language_repo_mapping = {
 GITHUB_BASE_RAW = "https://raw.githubusercontent.com/TECH-SNEHAL"
 
 # -----------------------------
-# Function to list files from GitHub repo folder
-# -----------------------------
-def get_github_files(repo, folder):
-    url = f"https://api.github.com/repos/TECH-SNEHAL/{repo}/contents/{folder}"
-    response = requests.get(url)
-    if response.status_code != 200:
-        print(f"⚠️ Failed to fetch files for {repo}/{folder}: {response.status_code}")
-        return []
-    data = response.json()
-    files = [item['name'] for item in data if item['type'] == 'file' and item['name'].endswith(".mp3")]
-    return sorted(files)
-
-# -----------------------------
-# Update JSON URLs
+# Process each language
 # -----------------------------
 for lang, info in language_repo_mapping.items():
-    json_file_path = os.path.join(json_folder, info["json_file"])
-    if not os.path.exists(json_file_path):
-        print(f"JSON file {json_file_path} not found. Skipping {lang}.")
+    json_path = os.path.join(json_folder, info["json_file"])
+    if not os.path.exists(json_path):
+        print(f"⚠️ {info['json_file']} not found for {lang}. Skipping.")
         continue
 
-    # Get actual filenames from GitHub
-    filenames = get_github_files(info["repo"], info["folder"])
-    if not filenames:
-        print(f"No files found for {lang}. Skipping.")
-        continue
+    print(f"Processing {lang}...")
 
-    # Load JSON
-    with open(json_file_path, "r", encoding="utf-8") as f:
+    with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Replace URLs in order
-    chapter_index = 0
+    updated = False
+
+    # Go through each book and chapter
     for book, chapters in data.items():
-        for chapter in chapters:
-            if chapter_index < len(filenames):
-                file_name = filenames[chapter_index]
-                new_url = f"{GITHUB_BASE_RAW}/{info['repo']}/main/{info['folder']}/{file_name}"
-                data[book][chapter] = new_url
-                chapter_index += 1
-            else:
-                print(f"⚠️ Not enough files in GitHub repo to match chapters for {lang}")
-                break
+        for chapter_num, filename in chapters.items():
+            # Extract the file code (prefix before '-')
+            file_code = filename.split("-", 1)[0]
+            # Build the new URL
+            new_url = f"{GITHUB_BASE_RAW}/{info['repo']}/main/{info['folder']}/{filename}"
+            if data[book][chapter_num] != new_url:
+                data[book][chapter_num] = new_url
+                updated = True
 
-    # Save updated JSON
-    with open(json_file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
-    print(f"✅ Updated URLs in {info['json_file']} for {lang}")
+    # Save only if updated
+    if updated:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        print(f"✅ Updated URLs in {info['json_file']} for {lang}")
+    else:
+        print(f"ℹ️ No changes needed for {info['json_file']}")
 
 # -----------------------------
-# Commit and push updated JSON
+# Commit changes if any
 # -----------------------------
 try:
-    subprocess.run(['git', 'add', json_folder], check=True)
-    subprocess.run(['git', 'commit', '-m', 'Update all_books_stream.json with exact GitHub URLs'], check=True)
-    subprocess.run(['git', 'push'], check=True)
-    print("\n✅ All JSON files committed and pushed successfully!")
+    subprocess.run(['git', '-C', base_folder, 'add', 'stream_urls'], check=True)
+    subprocess.run(['git', '-C', base_folder, 'commit', '-m', 'Update all_books_stream.json files with correct GitHub URLs'], check=True)
+    subprocess.run(['git', '-C', base_folder, 'push'], check=True)
+    print("\n✅ All updates committed and pushed!")
 except subprocess.CalledProcessError as e:
-    print("\n⚠️ Git command failed:", e)
+    print("\n⚠️ Git operation failed:", e)
