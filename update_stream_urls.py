@@ -1,69 +1,60 @@
 import os
+import sqlite3
 import json
-import subprocess
+import random
 
-# -----------------------------
-# Paths
-# -----------------------------
-base_folder = r"C:\Users\VIJAY SNEHAL\Desktop\giturlmapping\bible_scripture"
-json_folder = os.path.join(base_folder, "stream_urls")
+# Folder paths
+db_folder = "C:/Users/VIJAY SNEHAL/Desktop/giturlmapping/bible_scripture/db_files"
+json_folder = "C:/Users/VIJAY SNEHAL/Desktop/giturlmapping/bible_scripture/stream_urls"
 
-# -----------------------------
-# Language to GitHub repo/folder mapping
-# -----------------------------
-language_repo_mapping = {
-    "english": {"repo": "audiofiles1", "folder": "english", "json_file": "english_all_books_stream.json"},
-    "hindi": {"repo": "audiofiles2", "folder": "hindi", "json_file": "hindi_all_books_stream.json"},
-    "malayalam": {"repo": "audiofiles2", "folder": "malayalam", "json_file": "malayalam_all_books_stream.json"},
-    "kannada": {"repo": "audiofiles3", "folder": "kannada", "json_file": "kannada_all_books_stream.json"},
-    "tamil": {"repo": "audiofiles3", "folder": "tamil", "json_file": "tamil_all_books_stream.json"},
-    "telugu": {"repo": "audiofiles3", "folder": "telugu", "json_file": "telugu_all_books_stream.json"},
+# Mapping of language to DB table
+table_names = {
+    "English": "bible_en",
+    "Hindi": "bible_hi",
+    "Kannada": "bible_kn",
+    "Malayalam": "bible_ml",
+    "Tamil": "bible_ta",
+    "Telugu": "bible_te"
 }
 
-GITHUB_BASE_RAW = "https://raw.githubusercontent.com/TECH-SNEHAL"
+# Load all JSON audio files
+audio_files = {}
+languages = table_names.keys()
+for lang in languages:
+    json_file = os.path.join(json_folder, f"{lang.lower()}_all_books_stream.json")
+    with open(json_file, "r", encoding="utf-8") as f:
+        audio_files[lang] = json.load(f)
 
-# -----------------------------
-# Process each language
-# -----------------------------
-for lang, info in language_repo_mapping.items():
-    json_path = os.path.join(json_folder, info["json_file"])
-    if not os.path.exists(json_path):
-        print(f"⚠️ {info['json_file']} not found for {lang}. Skipping.")
-        continue
+# Book indices range
+book_indices = list(range(1, 67))  # 1 to 66
 
-    print(f"Processing {lang}...")
+# Randomly select a book index and chapter (or specify manually)
+book_index = random.choice(book_indices)
+chapter_number = random.randint(1, 5)  # Example: choose chapter 1-5 randomly
 
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+print(f"Random Test -> Book index: {book_index}, Chapter: {chapter_number}\n")
 
-    updated = False
+# Fetch verses and audio for each language
+for lang in languages:
+    db_file = os.path.join(db_folder, table_names[lang] + ".db")
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
 
-    # Go through each book and chapter
-    for book, chapters in data.items():
-        for chapter_num, filename in chapters.items():
-            # Extract the file code (prefix before '-')
-            file_code = filename.split("-", 1)[0]
-            # Build the new URL
-            new_url = f"{GITHUB_BASE_RAW}/{info['repo']}/main/{info['folder']}/{filename}"
-            if data[book][chapter_num] != new_url:
-                data[book][chapter_num] = new_url
-                updated = True
+    # Fetch verses
+    cursor.execute(f"""
+        SELECT verse, text FROM {table_names[lang]}
+        WHERE book=? AND chapter=? ORDER BY verse
+    """, (book_index, chapter_number))
+    rows = cursor.fetchall()
+    conn.close()
 
-    # Save only if updated
-    if updated:
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
-        print(f"✅ Updated URLs in {info['json_file']} for {lang}")
+    print(f"--- {lang} Verses ---")
+    if rows:
+        for verse, text in rows:
+            print(f"{verse}: {text}")
     else:
-        print(f"ℹ️ No changes needed for {info['json_file']}")
-
-# -----------------------------
-# Commit changes if any
-# -----------------------------
-try:
-    subprocess.run(['git', '-C', base_folder, 'add', 'stream_urls'], check=True)
-    subprocess.run(['git', '-C', base_folder, 'commit', '-m', 'Update all_books_stream.json files with correct GitHub URLs'], check=True)
-    subprocess.run(['git', '-C', base_folder, 'push'], check=True)
-    print("\n✅ All updates committed and pushed!")
-except subprocess.CalledProcessError as e:
-    print("\n⚠️ Git operation failed:", e)
+        print("No verses found for this chapter.")
+    
+    # Fetch audio URL
+    audio_url = audio_files[lang].get(str(book_index), {}).get(str(chapter_number), "No audio URL")
+    print(f"{lang} Audio URL: {audio_url}\n")
